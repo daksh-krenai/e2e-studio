@@ -1,0 +1,212 @@
+import { spawn } from 'child_process'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { appendRunLog, completeRun, updateModule, getProject } from './db.js'
+import { sendRunSummary } from './mailer.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const activeRuns = new Map()
+
+export function isRunning(runId) {
+  return activeRuns.has(runId)
+}
+
+export function abortRun(runId) {
+  const entry = activeRuns.get(runId)
+  if (entry) {
+    entry.process?.kill('SIGTERM')
+    activeRuns.delete(runId)
+  }
+}
+
+export async function executeTest({ run, module: mod, project, wss, broadcast }) {
+  const workspaceDir = path.join(__dirname, '../workspaces', project.id, mod.id)
+  fs.mkdirSync(workspaceDir, { recursive: true })
+
+  const emit = (text) => {
+    appendRunLog(run.id, text)
+    broadcast(run.id, { type: 'log', text, runId: run.id })
+  }
+
+  // FORCE CLAUDE TO NARRATE: We explicitly instruct Claude to echo its thoughts so the user sees live progress.
+  const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
+
+Target URL: ${mod.url || project.baseUrl}
+Module Name: ${mod.name}
+Instructions: ${mod.instructions}
+
+CRITICAL SYSTEM INSTRUCTION: 
+You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
+
+REQUIREMENTS & BEST PRACTICES:
+1. Execute the test using the 'playwright-cli' command-line tool.
+2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
+3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
+4. Complete EVERY section of the form from start to end autonomously. 
+5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
+6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
+7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
+8. Close the browser session ('playwright-cli close') when finished.
+9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
+`
+
+  emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  emit('🚀 INITIALIZING E2E STUDIO AUTONOMOUS QA AGENT')
+  emit(`🧠 Engine: Claude Code CLI (Pro/Max Auth)`)
+  emit(`📋 Target Module: ${mod.name}`)
+  emit(`🌐 URL: ${mod.url || project.baseUrl}`)
+  emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+  try {
+    const startTime = Date.now()
+
+    // Spawn Claude Code CLI and parse the real-time execution
+    const resultText = await runClaudeAgent(prompt, workspaceDir, run.id, emit)
+
+    const duration = Date.now() - startTime
+    const isPassed = !resultText.toLowerCase().includes('status: failed') && !resultText.toLowerCase().includes('status: ❌ failed')
+    const status = isPassed ? 'passed' : 'failed'
+
+    const summary = {
+      passed: isPassed ? 1 : 0,
+      failed: isPassed ? 0 : 1,
+      total: 1,
+      duration
+    }
+
+    const completedRun = completeRun(run.id, { status, summary })
+    updateModule(mod.id, {
+      lastRunAt: new Date().toISOString(),
+      lastStatus: status
+    })
+
+    emit('')
+    emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    emit(`📊 Final Status: ${status === 'passed' ? '✅ PASSED' : '❌ FAILED'}`)
+    emit(`⏱  Total Execution Time: ${(duration / 1000).toFixed(1)}s`)
+    emit(`💰 Credit Usage: Tracked via Anthropic Pro account limits.`)
+    emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
+    broadcast(run.id, { type: 'complete', status, summary, runId: run.id })
+
+    if (mod.emailOnComplete) {
+      const proj = getProject(mod.projectId)
+      if (proj?.emailConfig?.to) {
+        try {
+          await sendRunSummary({
+            emailConfig: proj.emailConfig,
+            run: completedRun,
+            module: mod,
+            project: proj,
+            summary,
+            logs: completedRun.logs.map(l => l.text).join('\n')
+          })
+          emit('📧 QA Summary email dispatched successfully.')
+        } catch (e) {
+          emit(`⚠️ Email dispatch failed. Please verify SMTP credentials. Error: ${e.message}`)
+        }
+      }
+    }
+
+    activeRuns.delete(run.id)
+    return { status, summary }
+
+  } catch (err) {
+    const errorMsg = err.message || 'Unknown execution error'
+    emit('')
+    emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    emit(`❌ EXECUTION ABORTED: ${errorMsg}`)
+    emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    completeRun(run.id, { status: 'error', summary: null })
+    updateModule(mod.id, { lastRunAt: new Date().toISOString(), lastStatus: 'error' })
+    broadcast(run.id, { type: 'complete', status: 'error', summary: null, runId: run.id })
+    activeRuns.delete(run.id)
+    return { status: 'error', summary: null }
+  }
+}
+
+function runClaudeAgent(prompt, cwd, runId, emit) {
+  return new Promise((resolve, reject) => {
+    const tmpFile = path.join('/tmp', `e2e-prompt-${runId}.txt`)
+    fs.writeFileSync(tmpFile, prompt, 'utf8')
+
+    // Allow full Bash so Claude can pipe Playwright commands to grep/awk as it naturally prefers
+    const proc = spawn('claude', [
+      '-p', prompt,
+      '--allowedTools', 'Bash,Read,Write'
+    ], {
+      cwd,
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin to prevent the 3s timeout hang
+      shell: false
+    })
+
+    activeRuns.set(runId, { process: proc })
+
+    let output = ''
+    let stdoutBuf = ''
+    let stderrBuf = ''
+    let lastOutputTime = Date.now()
+
+    // Line-buffering logic to ensure logs stream cleanly without breaking mid-word
+    const processChunk = (chunk, isError) => {
+      lastOutputTime = Date.now() // Reset idle timer
+      const str = chunk.toString()
+      
+      // Auto-Auth Detection: If Claude asks for login, kill immediately and alert the user.
+      if (str.includes('OAuth session expired') || str.includes('claude login')) {
+        proc.kill('SIGKILL')
+        return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
+      }
+
+      if (isError) {
+        stderrBuf += str
+        const lines = stderrBuf.split('\n')
+        stderrBuf = lines.pop()
+        lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+      } else {
+        stdoutBuf += str
+        const lines = stdoutBuf.split('\n')
+        stdoutBuf = lines.pop()
+        lines.forEach(line => {
+          output += line + '\n'
+          if (line.trim()) emit(line)
+        })
+      }
+    }
+
+    proc.stdout.on('data', (data) => processChunk(data, false))
+    proc.stderr.on('data', (data) => processChunk(data, true))
+
+    // Idle Tracker: Alert the user if Claude is doing heavy thinking/parsing for over 45 seconds
+    const idleCheck = setInterval(() => {
+      if (Date.now() - lastOutputTime > 45000) {
+        emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+        lastOutputTime = Date.now() // Reset so it doesn't spam
+      }
+    }, 15000)
+
+    proc.on('close', (code) => {
+      clearInterval(idleCheck)
+      try { fs.unlinkSync(tmpFile) } catch (_) {}
+      
+      // Flush remaining buffers
+      if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
+      if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
+
+      if (output.trim().length > 0) {
+        resolve(output.trim())
+      } else {
+        reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
+      }
+    })
+
+    proc.on('error', (err) => {
+      clearInterval(idleCheck)
+      try { fs.unlinkSync(tmpFile) } catch (_) {}
+      reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
+    })
+  })
+}
