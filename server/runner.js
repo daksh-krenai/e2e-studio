@@ -140,7 +140,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       cwd,
       env: { ...process.env },
       stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin to prevent the 3s timeout hang
-      shell: false
+      shell: true
     })
 
     activeRuns.set(runId, { process: proc })
