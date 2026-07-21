@@ -41,3 +41,8 @@ coverage/
 # Misc
 *.pid
 /workspaces
+
+# Local database and dynamic workspaces
+data/
+workspaces/
+test-results/
