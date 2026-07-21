@@ -14,7 +14,7 @@ import { initScheduler, scheduleModule, cancelSchedule } from './scheduler.js'
 import { testEmailConfig } from './mailer.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT || 8083
 
 // WebSocket clients: runId -> Set<ws>
 const subscribers = new Map()
@@ -52,7 +52,7 @@ async function main() {
   app.use('/workspaces', express.static(path.join(__dirname, '../workspaces')))
   // ─── WebSocket ────────────────────────────────────────
   wss.on('connection', (ws, req) => {
-    const runId = new URL(req.url, 'http://localhost').searchParams.get('runId')
+    const runId = new URL(req.url, 'http://0.0.0.0').searchParams.get('runId')
     if (!runId) { ws.close(); return }
 
     if (!subscribers.has(runId)) subscribers.set(runId, new Set())
@@ -190,9 +190,15 @@ async function main() {
     }
   })
 
-  server.listen(PORT, () => {
-    console.log(`\n🚀 E2E Studio running at http://localhost:${PORT}`)
-    console.log(`📡 WebSocket at ws://localhost:${PORT}/ws`)
+  // server.listen(PORT, () => {
+  //   console.log(`\n🚀 E2E Studio running at http://localhost:${PORT}`)
+  //   console.log(`📡 WebSocket at ws://localhost:${PORT}/ws`)
+  //   console.log(`📁 Data stored at ${path.join(__dirname, '../data/db.json')}\n`)
+  // })
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 E2E Studio running at http://0.0.0.0:${PORT}`)
+    console.log(`📡 WebSocket at ws://0.0.0.0:${PORT}/ws`)
     console.log(`📁 Data stored at ${path.join(__dirname, '../data/db.json')}\n`)
   })
 }
