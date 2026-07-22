@@ -314,7 +314,7 @@
 
 
 
-import { spawn } from 'child_process'
+import { spawn, execSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -444,29 +444,37 @@ REQUIREMENTS & BEST PRACTICES:
 
 function runClaudeAgent(prompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
-    // Cross-platform temp directory
     const tmpDir = os.tmpdir()
     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     fs.writeFileSync(tmpFile, prompt, 'utf8')
 
-    // GUARANTEED FIX: Construct the absolute path to the executable
-    const isWin = process.platform === 'win32'
-    let claudeBinary = 'claude'
-    
-    if (isWin) {
-      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming')
-      claudeBinary = path.join(appData, 'npm', 'claude.cmd')
+    let cmd = 'claude'
+    let args = ['-p', prompt, '--allowedTools', 'Bash,Read,Write']
+    let useShell = false
+
+    if (process.platform === 'win32') {
+      useShell = true
+      try {
+        // LAYER 1: Ask Windows to find the executable path dynamically inside this specific process.
+        const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
+        const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
+        
+        // Grab the .cmd file specifically
+        cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
+        emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
+      } catch (e) {
+        // LAYER 2: If the PATH is completely missing, fallback to npx. npx is native to Node and bypasses global pathing entirely.
+        emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
+        cmd = 'npx.cmd'
+        args = ['-y', '@anthropic-ai/claude-code', '-p', prompt, '--allowedTools', 'Bash,Read,Write']
+      }
     }
 
-    // Spawn using the absolute path
-    const proc = spawn(claudeBinary, [
-      '-p', prompt,
-      '--allowedTools', 'Bash,Read,Write'
-    ], {
+    const proc = spawn(cmd, args, {
       cwd,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'], 
-      shell: isWin // Required on Windows to execute .cmd files
+      shell: useShell
     })
 
     activeRuns.set(runId, { process: proc })
