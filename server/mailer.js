@@ -109,15 +109,15 @@
 import nodemailer from 'nodemailer';
 import { marked } from 'marked';
 
-// Restored function for index.js to verify SMTP credentials
 export async function testEmailConfig(emailConfig) {
   const transporter = nodemailer.createTransport({
-    host: emailConfig.smtpHost,
-    port: emailConfig.smtpPort,
-    secure: emailConfig.smtpPort === 465, 
+    // Updated to match the exact keys in your database
+    host: emailConfig.host || emailConfig.smtpHost,
+    port: emailConfig.port || emailConfig.smtpPort,
+    secure: (emailConfig.port || emailConfig.smtpPort) === 465, 
     auth: {
-      user: emailConfig.smtpUser,
-      pass: emailConfig.smtpPass,
+      user: emailConfig.user || emailConfig.smtpUser,
+      pass: emailConfig.pass || emailConfig.smtpPass,
     },
   });
   
@@ -125,15 +125,15 @@ export async function testEmailConfig(emailConfig) {
   return true;
 }
 
-// Updated function with HTML/Markdown parsing to prevent truncation
 export async function sendRunSummary({ emailConfig, run, module, project, summary, report, logs }) {
   const transporter = nodemailer.createTransport({
-    host: emailConfig.smtpHost,
-    port: emailConfig.smtpPort,
-    secure: emailConfig.smtpPort === 465, 
+    // Updated to match the exact keys in your database
+    host: emailConfig.host || emailConfig.smtpHost,
+    port: emailConfig.port || emailConfig.smtpPort,
+    secure: (emailConfig.port || emailConfig.smtpPort) === 465, 
     auth: {
-      user: emailConfig.smtpUser,
-      pass: emailConfig.smtpPass,
+      user: emailConfig.user || emailConfig.smtpUser,
+      pass: emailConfig.pass || emailConfig.smtpPass,
     },
   });
 
@@ -144,7 +144,7 @@ export async function sendRunSummary({ emailConfig, run, module, project, summar
   const htmlContent = report ? marked.parse(report) : marked.parse(logs);
 
   const mailOptions = {
-    from: `"E2E Studio QA Agent" <${emailConfig.smtpUser}>`,
+    from: `"E2E Studio QA Agent" <${emailConfig.user || emailConfig.smtpUser}>`,
     to: emailConfig.to,
     subject: `[${statusText}] QA Report: ${project.name} - ${module.name}`,
     html: `
