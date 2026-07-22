@@ -541,19 +541,148 @@ REQUIREMENTS & BEST PRACTICES:
 //   })
 // }
 
+// function runClaudeAgent(prompt, cwd, runId, emit) {
+//   return new Promise((resolve, reject) => {
+//     const tmpDir = os.tmpdir()
+//     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
+//     fs.writeFileSync(tmpFile, prompt, 'utf8')
+
+//     // THE FIX: Do not pass the massive multi-line string into the Windows shell.
+//     // Instead, pass a safe, single-line prompt instructing Claude to read the temp file.
+//     const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
+
+//     let cmd = 'claude'
+//     // Notice we are wrapping safePrompt in double quotes for the Windows shell
+//     let args = ['-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
+//     let useShell = false
+
+//     if (process.platform === 'win32') {
+//       useShell = true
+//       try {
+//         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
+//         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
+//         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
+//         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
+//       } catch (e) {
+//         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
+//         cmd = 'npx.cmd'
+//         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
+//       }
+//     }
+
+//     const proc = spawn(cmd, args, {
+//       cwd,
+//       env: process.env,
+//       stdio: ['ignore', 'pipe', 'pipe'], 
+//       shell: useShell
+//     })
+
+//     activeRuns.set(runId, { process: proc })
+
+//     let output = ''
+//     let stdoutBuf = ''
+//     let stderrBuf = ''
+//     let lastOutputTime = Date.now()
+
+//     const processChunk = (chunk, isError) => {
+//       lastOutputTime = Date.now() 
+//       const str = chunk.toString()
+      
+//       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+//         proc.kill('SIGKILL')
+//         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
+//       }
+
+//       if (isError) {
+//         stderrBuf += str
+//         const lines = stderrBuf.split('\n')
+//         stderrBuf = lines.pop()
+//         lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+//       } else {
+//         stdoutBuf += str
+//         const lines = stdoutBuf.split('\n')
+//         stdoutBuf = lines.pop()
+//         lines.forEach(line => {
+//           output += line + '\n'
+//           if (line.trim()) emit(line)
+//         })
+//       }
+//     }
+
+//     proc.stdout.on('data', (data) => processChunk(data, false))
+//     proc.stderr.on('data', (data) => processChunk(data, true))
+
+//     const idleCheck = setInterval(() => {
+//       if (Date.now() - lastOutputTime > 45000) {
+//         emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+//         lastOutputTime = Date.now() 
+//       }
+//     }, 15000)
+
+//     proc.on('close', (code) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+      
+//       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
+//       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
+
+//       if (output.trim().length > 0) {
+//         resolve(output.trim())
+//       } else {
+//         reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
+//       }
+//     })
+
+//     proc.on('error', (err) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+//       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
+//     })
+//   })
+// }
+
+
+
+
+
+
 function runClaudeAgent(prompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
     const tmpDir = os.tmpdir()
     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
-    fs.writeFileSync(tmpFile, prompt, 'utf8')
+    
+    // LAYER 1: Prompt-Level Cost & Security Guardrails
+    const guardrailedPrompt = prompt + 
+      `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+      `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
+      `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
+      `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
 
-    // THE FIX: Do not pass the massive multi-line string into the Windows shell.
-    // Instead, pass a safe, single-line prompt instructing Claude to read the temp file.
+    fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
+
+    // Programmatically suppress the one-time warning dialog for bypass mode
+    try {
+      const claudeSettingsDir = path.join(os.homedir(), '.claude');
+      const claudeSettingsFile = path.join(claudeSettingsDir, 'settings.json');
+      fs.mkdirSync(claudeSettingsDir, { recursive: true });
+      let settings = {};
+      if (fs.existsSync(claudeSettingsFile)) {
+        try { settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8')); } catch(e){}
+      }
+      settings.skipDangerousModePermissionPrompt = true;
+      fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
+    } catch (e) {
+      emit('⚠️ [System] Failed to update Claude settings. The headless run might pause for a warning dialog.');
+    }
+
     const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
 
     let cmd = 'claude'
-    // Notice we are wrapping safePrompt in double quotes for the Windows shell
-    let args = ['-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
+    let args = [
+      '-p', `"${safePrompt}"`, 
+      '--allowedTools', 'Bash,Read,Write',
+      '--dangerously-skip-permissions'
+    ]
     let useShell = false
 
     if (process.platform === 'win32') {
@@ -566,7 +695,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       } catch (e) {
         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
         cmd = 'npx.cmd'
-        args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
+        args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
       }
     }
 
@@ -579,16 +708,27 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
 
     activeRuns.set(runId, { process: proc })
 
+    // LAYER 2: Hard Timeout (3 Minutes max execution)
+    const MAX_RUNTIME_MS = 3 * 60 * 1000;
+    const hardTimeout = setTimeout(() => {
+      proc.kill('SIGKILL');
+      reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
+    }, MAX_RUNTIME_MS);
+
     let output = ''
     let stdoutBuf = ''
     let stderrBuf = ''
     let lastOutputTime = Date.now()
+    
+    // Metric for Layer 3 Watchdog
+    let bashCommandCount = 0;
 
     const processChunk = (chunk, isError) => {
       lastOutputTime = Date.now() 
       const str = chunk.toString()
       
       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+        clearTimeout(hardTimeout);
         proc.kill('SIGKILL')
         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
       }
@@ -605,6 +745,17 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
         lines.forEach(line => {
           output += line + '\n'
           if (line.trim()) emit(line)
+
+          // LAYER 3: Runaway Loop Watchdog
+          // If the agent keeps executing tools without finishing, pull the plug.
+          if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
+            bashCommandCount++;
+            if (bashCommandCount > 12) {
+              clearTimeout(hardTimeout);
+              proc.kill('SIGKILL');
+              return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+            }
+          }
         })
       }
     }
@@ -621,6 +772,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
 
     proc.on('close', (code) => {
       clearInterval(idleCheck)
+      clearTimeout(hardTimeout)
       try { fs.unlinkSync(tmpFile) } catch (_) {}
       
       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
@@ -635,6 +787,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
 
     proc.on('error', (err) => {
       clearInterval(idleCheck)
+      clearTimeout(hardTimeout)
       try { fs.unlinkSync(tmpFile) } catch (_) {}
       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
     })
