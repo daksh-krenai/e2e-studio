@@ -442,31 +442,131 @@ REQUIREMENTS & BEST PRACTICES:
   }
 }
 
+// function runClaudeAgent(prompt, cwd, runId, emit) {
+//   return new Promise((resolve, reject) => {
+//     const tmpDir = os.tmpdir()
+//     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
+//     fs.writeFileSync(tmpFile, prompt, 'utf8')
+
+//     let cmd = 'claude'
+//     let args = ['-p', prompt, '--allowedTools', 'Bash,Read,Write']
+//     let useShell = false
+
+//     if (process.platform === 'win32') {
+//       useShell = true
+//       try {
+//         // LAYER 1: Ask Windows to find the executable path dynamically inside this specific process.
+//         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
+//         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
+        
+//         // Grab the .cmd file specifically
+//         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
+//         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
+//       } catch (e) {
+//         // LAYER 2: If the PATH is completely missing, fallback to npx. npx is native to Node and bypasses global pathing entirely.
+//         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
+//         cmd = 'npx.cmd'
+//         args = ['-y', '@anthropic-ai/claude-code', '-p', prompt, '--allowedTools', 'Bash,Read,Write']
+//       }
+//     }
+
+//     const proc = spawn(cmd, args, {
+//       cwd,
+//       env: process.env,
+//       stdio: ['ignore', 'pipe', 'pipe'], 
+//       shell: useShell
+//     })
+
+//     activeRuns.set(runId, { process: proc })
+
+//     let output = ''
+//     let stdoutBuf = ''
+//     let stderrBuf = ''
+//     let lastOutputTime = Date.now()
+
+//     const processChunk = (chunk, isError) => {
+//       lastOutputTime = Date.now() 
+//       const str = chunk.toString()
+      
+//       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+//         proc.kill('SIGKILL')
+//         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
+//       }
+
+//       if (isError) {
+//         stderrBuf += str
+//         const lines = stderrBuf.split('\n')
+//         stderrBuf = lines.pop()
+//         lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+//       } else {
+//         stdoutBuf += str
+//         const lines = stdoutBuf.split('\n')
+//         stdoutBuf = lines.pop()
+//         lines.forEach(line => {
+//           output += line + '\n'
+//           if (line.trim()) emit(line)
+//         })
+//       }
+//     }
+
+//     proc.stdout.on('data', (data) => processChunk(data, false))
+//     proc.stderr.on('data', (data) => processChunk(data, true))
+
+//     const idleCheck = setInterval(() => {
+//       if (Date.now() - lastOutputTime > 45000) {
+//         emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+//         lastOutputTime = Date.now() 
+//       }
+//     }, 15000)
+
+//     proc.on('close', (code) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+      
+//       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
+//       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
+
+//       if (output.trim().length > 0) {
+//         resolve(output.trim())
+//       } else {
+//         reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
+//       }
+//     })
+
+//     proc.on('error', (err) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+//       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
+//     })
+//   })
+// }
+
 function runClaudeAgent(prompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
     const tmpDir = os.tmpdir()
     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     fs.writeFileSync(tmpFile, prompt, 'utf8')
 
+    // THE FIX: Do not pass the massive multi-line string into the Windows shell.
+    // Instead, pass a safe, single-line prompt instructing Claude to read the temp file.
+    const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
+
     let cmd = 'claude'
-    let args = ['-p', prompt, '--allowedTools', 'Bash,Read,Write']
+    // Notice we are wrapping safePrompt in double quotes for the Windows shell
+    let args = ['-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
     let useShell = false
 
     if (process.platform === 'win32') {
       useShell = true
       try {
-        // LAYER 1: Ask Windows to find the executable path dynamically inside this specific process.
         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
-        
-        // Grab the .cmd file specifically
         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
       } catch (e) {
-        // LAYER 2: If the PATH is completely missing, fallback to npx. npx is native to Node and bypasses global pathing entirely.
         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
         cmd = 'npx.cmd'
-        args = ['-y', '@anthropic-ai/claude-code', '-p', prompt, '--allowedTools', 'Bash,Read,Write']
+        args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write']
       }
     }
 
