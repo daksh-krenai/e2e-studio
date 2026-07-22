@@ -109,8 +109,24 @@
 import nodemailer from 'nodemailer';
 import { marked } from 'marked';
 
+// Restored function for index.js to verify SMTP credentials
+export async function testEmailConfig(emailConfig) {
+  const transporter = nodemailer.createTransport({
+    host: emailConfig.smtpHost,
+    port: emailConfig.smtpPort,
+    secure: emailConfig.smtpPort === 465, 
+    auth: {
+      user: emailConfig.smtpUser,
+      pass: emailConfig.smtpPass,
+    },
+  });
+  
+  await transporter.verify();
+  return true;
+}
+
+// Updated function with HTML/Markdown parsing to prevent truncation
 export async function sendRunSummary({ emailConfig, run, module, project, summary, report, logs }) {
-  // Configure the SMTP transporter
   const transporter = nodemailer.createTransport({
     host: emailConfig.smtpHost,
     port: emailConfig.smtpPort,
@@ -121,16 +137,12 @@ export async function sendRunSummary({ emailConfig, run, module, project, summar
     },
   });
 
-  // Determine the status color and icon
   const isPassed = summary.passed > 0;
-  const statusColor = isPassed ? '#10b981' : '#ef4444'; // Tailwind Green or Red
+  const statusColor = isPassed ? '#10b981' : '#ef4444';
   const statusText = isPassed ? '✅ PASSED' : '❌ FAILED';
 
-  // Safely parse Claude's Markdown report into HTML
-  // If 'report' is missing, fallback to parsing the raw logs
   const htmlContent = report ? marked.parse(report) : marked.parse(logs);
 
-  // Construct a professional, styled HTML email template
   const mailOptions = {
     from: `"E2E Studio QA Agent" <${emailConfig.smtpUser}>`,
     to: emailConfig.to,
@@ -151,7 +163,6 @@ export async function sendRunSummary({ emailConfig, run, module, project, summar
         <!-- Markdown Report Body -->
         <div style="background-color: #f9fafb; padding: 20px; border-radius: 6px; border: 1px solid #e5e7eb;">
           <style>
-            /* Inject basic styles so Markdown tables look clean in emails */
             table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
             th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; font-size: 14px; }
             th { background-color: #f3f4f6; }
@@ -170,6 +181,5 @@ export async function sendRunSummary({ emailConfig, run, module, project, summar
     `,
   };
 
-  // Dispatch the email
   await transporter.sendMail(mailOptions);
 }
