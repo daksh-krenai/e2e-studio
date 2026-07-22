@@ -405,6 +405,20 @@ REQUIREMENTS & BEST PRACTICES:
 
     broadcast(run.id, { type: 'complete', status, summary, runId: run.id })
 
+    // if (mod.emailOnComplete) {
+    //   const proj = getProject(mod.projectId)
+    //   if (proj?.emailConfig?.to) {
+    //     try {
+    //       await sendRunSummary({
+    //         emailConfig: proj.emailConfig,
+    //         run: completedRun,
+    //         module: mod,
+    //         project: proj,
+    //         summary,
+    //         logs: completedRun.logs.map(l => l.text).join('\n')
+    //       })
+    //       emit('📧 QA Summary email dispatched successfully.')
+    //     } catch (e) {
     if (mod.emailOnComplete) {
       const proj = getProject(mod.projectId)
       if (proj?.emailConfig?.to) {
@@ -415,6 +429,7 @@ REQUIREMENTS & BEST PRACTICES:
             module: mod,
             project: proj,
             summary,
+            report: resultText, // <-- NEW: Pass the pristine Markdown report
             logs: completedRun.logs.map(l => l.text).join('\n')
           })
           emit('📧 QA Summary email dispatched successfully.')
