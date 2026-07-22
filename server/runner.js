@@ -127,19 +127,119 @@ REQUIREMENTS & BEST PRACTICES:
   }
 }
 
+// function runClaudeAgent(prompt, cwd, runId, emit) {
+//   return new Promise((resolve, reject) => {
+//     const tmpFile = path.join('/tmp', `e2e-prompt-${runId}.txt`)
+//     fs.writeFileSync(tmpFile, prompt, 'utf8')
+
+//     // Allow full Bash so Claude can pipe Playwright commands to grep/awk as it naturally prefers
+//     const proc = spawn('claude', [
+//       '-p', prompt,
+//       '--allowedTools', 'Bash,Read,Write'
+//     ], {
+//       cwd,
+//       env: { ...process.env },
+//       stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin to prevent the 3s timeout hang
+//       shell: true
+//     })
+
+//     activeRuns.set(runId, { process: proc })
+
+//     let output = ''
+//     let stdoutBuf = ''
+//     let stderrBuf = ''
+//     let lastOutputTime = Date.now()
+
+//     // Line-buffering logic to ensure logs stream cleanly without breaking mid-word
+//     const processChunk = (chunk, isError) => {
+//       lastOutputTime = Date.now() // Reset idle timer
+//       const str = chunk.toString()
+      
+//       // Auto-Auth Detection: If Claude asks for login, kill immediately and alert the user.
+//       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+//         proc.kill('SIGKILL')
+//         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
+//       }
+
+//       if (isError) {
+//         stderrBuf += str
+//         const lines = stderrBuf.split('\n')
+//         stderrBuf = lines.pop()
+//         lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+//       } else {
+//         stdoutBuf += str
+//         const lines = stdoutBuf.split('\n')
+//         stdoutBuf = lines.pop()
+//         lines.forEach(line => {
+//           output += line + '\n'
+//           if (line.trim()) emit(line)
+//         })
+//       }
+//     }
+
+//     proc.stdout.on('data', (data) => processChunk(data, false))
+//     proc.stderr.on('data', (data) => processChunk(data, true))
+
+//     // Idle Tracker: Alert the user if Claude is doing heavy thinking/parsing for over 45 seconds
+//     const idleCheck = setInterval(() => {
+//       if (Date.now() - lastOutputTime > 45000) {
+//         emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+//         lastOutputTime = Date.now() // Reset so it doesn't spam
+//       }
+//     }, 15000)
+
+//     proc.on('close', (code) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+      
+//       // Flush remaining buffers
+//       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
+//       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
+
+//       if (output.trim().length > 0) {
+//         resolve(output.trim())
+//       } else {
+//         reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
+//       }
+//     })
+
+//     proc.on('error', (err) => {
+//       clearInterval(idleCheck)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+//       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
+//     })
+//   })
+// }
+
+
 function runClaudeAgent(prompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
-    const tmpFile = path.join('/tmp', `e2e-prompt-${runId}.txt`)
+    // 1. Cross-platform temporary directory handling
+    const tmpDir = os.tmpdir()
+    const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     fs.writeFileSync(tmpFile, prompt, 'utf8')
 
-    // Allow full Bash so Claude can pipe Playwright commands to grep/awk as it naturally prefers
-    const proc = spawn('claude', [
+    // 2. Resolve Windows command executable properly (.cmd)
+    const isWin = process.platform === 'win32'
+    const claudeBinary = isWin ? 'claude.cmd' : 'claude'
+
+    // 3. Ensure global NPM binary folder is present in PATH for Windows subprocesses
+    const env = { ...process.env }
+    if (isWin && process.env.APPDATA) {
+      const npmPath = path.join(process.env.APPDATA, 'npm')
+      if (!env.PATH?.includes(npmPath)) {
+        env.PATH = `${npmPath};${env.PATH || ''}`
+      }
+    }
+
+    // Spawn Claude Code CLI with proper binary and environment flags
+    const proc = spawn(claudeBinary, [
       '-p', prompt,
       '--allowedTools', 'Bash,Read,Write'
     ], {
       cwd,
-      env: { ...process.env },
-      stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin to prevent the 3s timeout hang
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
       shell: true
     })
 
