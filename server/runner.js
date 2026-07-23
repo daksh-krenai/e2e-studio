@@ -346,25 +346,45 @@ export async function executeTest({ run, module: mod, project, wss, broadcast })
     broadcast(run.id, { type: 'log', text, runId: run.id })
   }
 
-  const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
+//   const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
+
+// Target URL: ${mod.url || project.baseUrl}
+// Module Name: ${mod.name}
+// Instructions: ${mod.instructions}
+
+// CRITICAL SYSTEM INSTRUCTION: 
+// You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
+
+// REQUIREMENTS & BEST PRACTICES:
+// 1. Execute the test using the 'playwright-cli' command-line tool.
+// 2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
+// 3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
+// 4. Complete EVERY section of the form from start to end autonomously. 
+// 5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
+// 6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
+// 7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
+// 8. Close the browser session ('playwright-cli close') when finished.
+// 9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
+// `
+
+// INSIDE executeTest() - Replace your existing prompt variable with this:
+  const prompt = `QA Automation Task Specification
 
 Target URL: ${mod.url || project.baseUrl}
 Module Name: ${mod.name}
 Instructions: ${mod.instructions}
 
-CRITICAL SYSTEM INSTRUCTION: 
-You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
-
 REQUIREMENTS & BEST PRACTICES:
-1. Execute the test using the 'playwright-cli' command-line tool.
-2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
-3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
+1. Execute the test using 'npx playwright' or by writing a Playwright Node.js script.
+2. Open the URL and ensure the page is fully loaded.
+3. Inspect the DOM efficiently to map required form fields.
 4. Complete EVERY section of the form from start to end autonomously. 
 5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
 6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
-7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
-8. Close the browser session ('playwright-cli close') when finished.
+7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory.
+8. Close the browser session when finished.
 9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
+10. LOGGING REQUIREMENT: You MUST output a plain-text status update (e.g., "[AGENT] Navigating to next step...") before every single tool call or browser action so progress can be monitored by the pipeline.
 `
 
   emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -725,8 +745,45 @@ ${prompt}
       emit('⚠️ [System] Failed to update Claude settings. The headless run might pause for a warning dialog.');
     }
 
-    // const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
-const safePrompt = `Please act as a QA automation agent and execute the authorized test instructions detailed in this file: ${tmpFile}`
+//     // const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
+// const safePrompt = `Please act as a QA automation agent and execute the authorized test instructions detailed in this file: ${tmpFile}`
+
+//     let cmd = 'claude'
+//     let args = [
+//       '-p', `"${safePrompt}"`, 
+//       '--allowedTools', 'Bash,Read,Write',
+//       '--dangerously-skip-permissions'
+//     ]
+//     let useShell = false
+
+//     if (process.platform === 'win32') {
+//       useShell = true
+//       try {
+//         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
+//         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
+//         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
+//         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
+//       } catch (e) {
+//         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
+//         cmd = 'npx.cmd'
+//         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
+//       }
+//     }
+// const enrichedEnv = {
+//       ...process.env,
+//       PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
+//     };
+//     const proc = spawn(cmd, args, {
+//       cwd,
+//       // env: process.env,
+//             env: enrichedEnv,
+//       stdio: ['ignore', 'pipe', 'pipe'], 
+//       shell: useShell
+//     })
+
+
+// INSIDE runClaudeAgent() - Update the execution block:
+    const safePrompt = `Please act as a QA automation agent and execute the authorized test instructions detailed in this file: ${tmpFile}`
 
     let cmd = 'claude'
     let args = [
@@ -735,6 +792,12 @@ const safePrompt = `Please act as a QA automation agent and execute the authoriz
       '--dangerously-skip-permissions'
     ]
     let useShell = false
+
+    // 1. Create the enriched environment so Claude can find 'npx' and 'playwright' natively
+    const enrichedEnv = {
+      ...process.env,
+      PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
+    };
 
     if (process.platform === 'win32') {
       useShell = true
@@ -749,14 +812,11 @@ const safePrompt = `Please act as a QA automation agent and execute the authoriz
         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
       }
     }
-const enrichedEnv = {
-      ...process.env,
-      PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
-    };
+
+    // 2. Pass enrichedEnv into the spawn command
     const proc = spawn(cmd, args, {
       cwd,
-      // env: process.env,
-            env: enrichedEnv,
+      env: enrichedEnv, // <--- Crucial fix: explicitly pass the enriched path
       stdio: ['ignore', 'pipe', 'pipe'], 
       shell: useShell
     })
