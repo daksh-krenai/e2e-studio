@@ -673,9 +673,13 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     //   `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
     //   `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
 
-        const guardrailedPrompt = prompt + 
+      //   const guardrailedPrompt = prompt + 
+      // `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+      // `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+      const guardrailedPrompt = prompt + 
       `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
-      `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+      `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n` +
+      `2. NARRATE PROGRESS: Before executing any tool or browser action, output a short, single-line status update (e.g., "Navigating to Personal Info step...", "Filling out Disclosure Questionnaire...").\n`;
     fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
 
     // Programmatically suppress the one-time warning dialog for bypass mode
@@ -751,22 +755,57 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
       }
 
+      // if (isError) {
+      //   stderrBuf += str
+      //   const lines = stderrBuf.split('\n')
+      //   stderrBuf = lines.pop()
+      //   lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+      // } else {
+      //   stdoutBuf += str
+      //   const lines = stdoutBuf.split('\n')
+      //   stdoutBuf = lines.pop()
+      //   lines.forEach(line => {
+      //     output += line + '\n'
+      //     if (line.trim()) emit(line)
+
+      //     // LAYER 3: Runaway Loop Watchdog
+      //     // If the agent keeps executing tools without finishing, pull the plug.
+      //     if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
+      //       bashCommandCount++;
+      //       if (bashCommandCount > 12) {
+      //         // clearTimeout(hardTimeout);
+      //         proc.kill('SIGKILL');
+      //         return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+      //       }
+      //     }
+      //   })
+      // }
       if (isError) {
         stderrBuf += str
-        const lines = stderrBuf.split('\n')
+        // Split on newline OR carriage return
+        const lines = stderrBuf.split(/\r?\n|\r/)
         stderrBuf = lines.pop()
-        lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+        lines.filter(l => l.trim()).forEach(line => {
+          // Strip terminal color codes for clean UI
+          const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
+          if (cleanLine) emit(`⚙️ [CLI] ${cleanLine}`)
+        })
       } else {
         stdoutBuf += str
-        const lines = stdoutBuf.split('\n')
+        // Split on newline OR carriage return
+        const lines = stdoutBuf.split(/\r?\n|\r/)
         stdoutBuf = lines.pop()
         lines.forEach(line => {
-          output += line + '\n'
-          if (line.trim()) emit(line)
+          // Strip terminal color codes for clean UI
+          const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
+          
+          if (cleanLine) {
+            output += cleanLine + '\n'
+            emit(`🧠 [Agent] ${cleanLine}`)
+          }
 
-          // LAYER 3: Runaway Loop Watchdog
-          // If the agent keeps executing tools without finishing, pull the plug.
-          if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
+          // Layer 3: Runaway Loop Watchdog
+          if (cleanLine.toLowerCase().includes('running command') || cleanLine.toLowerCase().includes('tool use')) {
             bashCommandCount++;
             if (bashCommandCount > 12) {
               // clearTimeout(hardTimeout);
