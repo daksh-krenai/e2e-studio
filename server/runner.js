@@ -667,12 +667,15 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     
     // LAYER 1: Prompt-Level Cost & Security Guardrails
-    const guardrailedPrompt = prompt + 
-      `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
-      `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
-      `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
-      `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+    // const guardrailedPrompt = prompt + 
+    //   `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+    //   `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
+    //   `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
+    //   `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
 
+        const guardrailedPrompt = prompt + 
+      `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+      `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
     fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
 
     // Programmatically suppress the one-time warning dialog for bypass mode
@@ -724,11 +727,11 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     activeRuns.set(runId, { process: proc })
 
     // LAYER 2: Hard Timeout (3 Minutes max execution)
-    const MAX_RUNTIME_MS = 3 * 60 * 1000;
-    const hardTimeout = setTimeout(() => {
-      proc.kill('SIGKILL');
-      reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
-    }, MAX_RUNTIME_MS);
+    // const MAX_RUNTIME_MS = 3 * 60 * 1000;
+    // const hardTimeout = setTimeout(() => {
+    //   proc.kill('SIGKILL');
+    //   reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
+    // }, MAX_RUNTIME_MS);
 
     let output = ''
     let stdoutBuf = ''
@@ -743,7 +746,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       const str = chunk.toString()
       
       if (str.includes('OAuth session expired') || str.includes('claude login')) {
-        clearTimeout(hardTimeout);
+        // clearTimeout(hardTimeout);
         proc.kill('SIGKILL')
         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
       }
@@ -766,7 +769,7 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
           if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
             bashCommandCount++;
             if (bashCommandCount > 12) {
-              clearTimeout(hardTimeout);
+              // clearTimeout(hardTimeout);
               proc.kill('SIGKILL');
               return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
             }
@@ -778,16 +781,16 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     proc.stdout.on('data', (data) => processChunk(data, false))
     proc.stderr.on('data', (data) => processChunk(data, true))
 
-    const idleCheck = setInterval(() => {
-      if (Date.now() - lastOutputTime > 45000) {
-        emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
-        lastOutputTime = Date.now() 
-      }
-    }, 15000)
+    // const idleCheck = setInterval(() => {
+    //   if (Date.now() - lastOutputTime > 45000) {
+    //     emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+    //     lastOutputTime = Date.now() 
+    //   }
+    // }, 15000)
 
     proc.on('close', (code) => {
-      clearInterval(idleCheck)
-      clearTimeout(hardTimeout)
+      // clearInterval(idleCheck)
+      // clearTimeout(hardTimeout)
       try { fs.unlinkSync(tmpFile) } catch (_) {}
       
       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
@@ -801,8 +804,8 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     })
 
     proc.on('error', (err) => {
-      clearInterval(idleCheck)
-      clearTimeout(hardTimeout)
+      // clearInterval(idleCheck)
+      // clearTimeout(hardTimeout)
       try { fs.unlinkSync(tmpFile) } catch (_) {}
       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
     })
