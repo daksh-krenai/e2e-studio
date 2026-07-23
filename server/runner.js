@@ -749,10 +749,14 @@ const safePrompt = `Please act as a QA automation agent and execute the authoriz
         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
       }
     }
-
+const enrichedEnv = {
+      ...process.env,
+      PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
+    };
     const proc = spawn(cmd, args, {
       cwd,
-      env: process.env,
+      // env: process.env,
+            env: enrichedEnv,
       stdio: ['ignore', 'pipe', 'pipe'], 
       shell: useShell
     })
