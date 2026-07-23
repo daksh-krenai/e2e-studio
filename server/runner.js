@@ -337,148 +337,6 @@ export function abortRun(runId) {
   }
 }
 
-// export async function executeTest({ run, module: mod, project, wss, broadcast }) {
-//   const workspaceDir = path.join(__dirname, '../workspaces', project.id, mod.id)
-//   fs.mkdirSync(workspaceDir, { recursive: true })
-
-//   const emit = (text) => {
-//     appendRunLog(run.id, text)
-//     broadcast(run.id, { type: 'log', text, runId: run.id })
-//   }
-
-// //   const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
-
-// // Target URL: ${mod.url || project.baseUrl}
-// // Module Name: ${mod.name}
-// // Instructions: ${mod.instructions}
-
-// // CRITICAL SYSTEM INSTRUCTION: 
-// // You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
-
-// // REQUIREMENTS & BEST PRACTICES:
-// // 1. Execute the test using the 'playwright-cli' command-line tool.
-// // 2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
-// // 3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
-// // 4. Complete EVERY section of the form from start to end autonomously. 
-// // 5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
-// // 6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
-// // 7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
-// // 8. Close the browser session ('playwright-cli close') when finished.
-// // 9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
-// // `
-
-// // INSIDE executeTest() - Replace your existing prompt variable with this:
-//   const prompt = `QA Automation Task Specification
-
-// Target URL: ${mod.url || project.baseUrl}
-// Module Name: ${mod.name}
-// Instructions: ${mod.instructions}
-
-// REQUIREMENTS & BEST PRACTICES:
-// 1. Execute the test using 'npx playwright' or by writing a Playwright Node.js script.
-// 2. Open the URL and ensure the page is fully loaded.
-// 3. Inspect the DOM efficiently to map required form fields.
-// 4. Complete EVERY section of the form from start to end autonomously. 
-// 5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
-// 6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
-// 7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory.
-// 8. Close the browser session when finished.
-// 9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
-// 10. LOGGING REQUIREMENT: You MUST output a plain-text status update (e.g., "[AGENT] Navigating to next step...") before every single tool call or browser action so progress can be monitored by the pipeline.
-// `
-
-//   emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-//   emit('🚀 INITIALIZING E2E STUDIO AUTONOMOUS QA AGENT')
-//   emit(`🧠 Engine: Claude Code CLI (Pro/Max Auth)`)
-//   emit(`📋 Target Module: ${mod.name}`)
-//   emit(`🌐 URL: ${mod.url || project.baseUrl}`)
-//   emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-//   try {
-//     const startTime = Date.now()
-
-//     const resultText = await runClaudeAgent(prompt, workspaceDir, run.id, emit)
-
-//     const duration = Date.now() - startTime
-//     const isPassed = !resultText.toLowerCase().includes('status: failed') && !resultText.toLowerCase().includes('status: ❌ failed')
-//     const status = isPassed ? 'passed' : 'failed'
-
-//     const summary = {
-//       passed: isPassed ? 1 : 0,
-//       failed: isPassed ? 0 : 1,
-//       total: 1,
-//       duration
-//     }
-
-//     const completedRun = completeRun(run.id, { status, summary })
-//     updateModule(mod.id, {
-//       lastRunAt: new Date().toISOString(),
-//       lastStatus: status
-//     })
-
-//     emit('')
-//     emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-//     emit(`📊 Final Status: ${status === 'passed' ? '✅ PASSED' : '❌ FAILED'}`)
-//     emit(`⏱  Total Execution Time: ${(duration / 1000).toFixed(1)}s`)
-//     emit(`💰 Credit Usage: Tracked via Anthropic Pro account limits.`)
-//     emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-
-//     broadcast(run.id, { type: 'complete', status, summary, runId: run.id })
-
-//     // if (mod.emailOnComplete) {
-//     //   const proj = getProject(mod.projectId)
-//     //   if (proj?.emailConfig?.to) {
-//     //     try {
-//     //       await sendRunSummary({
-//     //         emailConfig: proj.emailConfig,
-//     //         run: completedRun,
-//     //         module: mod,
-//     //         project: proj,
-//     //         summary,
-//     //         logs: completedRun.logs.map(l => l.text).join('\n')
-//     //       })
-//     //       emit('📧 QA Summary email dispatched successfully.')
-//     //     } catch (e) {
-//     if (mod.emailOnComplete) {
-//       const proj = getProject(mod.projectId)
-//       if (proj?.emailConfig?.to) {
-//         try {
-//           await sendRunSummary({
-//             emailConfig: proj.emailConfig,
-//             run: completedRun,
-//             module: mod,
-//             project: proj,
-//             summary,
-//             report: resultText, // <-- NEW: Pass the pristine Markdown report
-//             logs: completedRun.logs.map(l => l.text).join('\n')
-//           })
-//           emit('📧 QA Summary email dispatched successfully.')
-//         } catch (e) {
-//           emit(`⚠️ Email dispatch failed. Please verify SMTP credentials. Error: ${e.message}`)
-//         }
-//       }
-//     }
-
-//     activeRuns.delete(run.id)
-//     return { status, summary }
-
-//   } catch (err) {
-//     const errorMsg = err.message || 'Unknown execution error'
-//     emit('')
-//     emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-//     emit(`❌ EXECUTION ABORTED: ${errorMsg}`)
-//     emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    
-//     completeRun(run.id, { status: 'error', summary: null })
-//     updateModule(mod.id, { lastRunAt: new Date().toISOString(), lastStatus: 'error' })
-//     broadcast(run.id, { type: 'complete', status: 'error', summary: null, runId: run.id })
-//     activeRuns.delete(run.id)
-//     return { status: 'error', summary: null }
-//   }
-// }
-
-
-
 export async function executeTest({ run, module: mod, project, wss, broadcast }) {
   const workspaceDir = path.join(__dirname, '../workspaces', project.id, mod.id)
   fs.mkdirSync(workspaceDir, { recursive: true })
@@ -488,12 +346,25 @@ export async function executeTest({ run, module: mod, project, wss, broadcast })
     broadcast(run.id, { type: 'log', text, runId: run.id })
   }
 
-  // 1. PURE DATA ONLY. No authorization, no system prompts, no threats.
-  const pureTestSpec = `TARGET URL: ${mod.url || project.baseUrl}
-MODULE NAME: ${mod.name}
+  const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
 
-USER INSTRUCTIONS:
-${mod.instructions}
+Target URL: ${mod.url || project.baseUrl}
+Module Name: ${mod.name}
+Instructions: ${mod.instructions}
+
+CRITICAL SYSTEM INSTRUCTION: 
+You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
+
+REQUIREMENTS & BEST PRACTICES:
+1. Execute the test using the 'playwright-cli' command-line tool.
+2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
+3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
+4. Complete EVERY section of the form from start to end autonomously. 
+5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
+6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
+7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
+8. Close the browser session ('playwright-cli close') when finished.
+9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
 `
 
   emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -506,8 +377,7 @@ ${mod.instructions}
   try {
     const startTime = Date.now()
 
-    // Pass the pureTestSpec down instead of a complex prompt
-    const resultText = await runClaudeAgent(pureTestSpec, workspaceDir, run.id, emit)
+    const resultText = await runClaudeAgent(prompt, workspaceDir, run.id, emit)
 
     const duration = Date.now() - startTime
     const isPassed = !resultText.toLowerCase().includes('status: failed') && !resultText.toLowerCase().includes('status: ❌ failed')
@@ -535,6 +405,20 @@ ${mod.instructions}
 
     broadcast(run.id, { type: 'complete', status, summary, runId: run.id })
 
+    // if (mod.emailOnComplete) {
+    //   const proj = getProject(mod.projectId)
+    //   if (proj?.emailConfig?.to) {
+    //     try {
+    //       await sendRunSummary({
+    //         emailConfig: proj.emailConfig,
+    //         run: completedRun,
+    //         module: mod,
+    //         project: proj,
+    //         summary,
+    //         logs: completedRun.logs.map(l => l.text).join('\n')
+    //       })
+    //       emit('📧 QA Summary email dispatched successfully.')
+    //     } catch (e) {
     if (mod.emailOnComplete) {
       const proj = getProject(mod.projectId)
       if (proj?.emailConfig?.to) {
@@ -545,7 +429,7 @@ ${mod.instructions}
             module: mod,
             project: proj,
             summary,
-            report: resultText,
+            report: resultText, // <-- NEW: Pass the pristine Markdown report
             logs: completedRun.logs.map(l => l.text).join('\n')
           })
           emit('📧 QA Summary email dispatched successfully.')
@@ -572,8 +456,6 @@ ${mod.instructions}
     return { status: 'error', summary: null }
   }
 }
-
-
 
 // function runClaudeAgent(prompt, cwd, runId, emit) {
 //   return new Promise((resolve, reject) => {
@@ -779,279 +661,12 @@ ${mod.instructions}
 
 
 
-// function runClaudeAgent(prompt, cwd, runId, emit) {
-//   return new Promise((resolve, reject) => {
-//     const tmpDir = os.tmpdir()
-//     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
-    
-//     // Delete any old screenshots from previous runs to prevent stale mailer attachments
-//     try {
-//       const files = fs.readdirSync(cwd);
-//       for (const file of files) {
-//         if (file.endsWith('.png') || file.endsWith('.jpeg') || file.endsWith('.jpg')) {
-//           fs.unlinkSync(path.join(cwd, file));
-//         }
-//       }
-//       emit('⚙️ [System] Cleaned up previous test artifacts.');
-//     } catch (cleanupErr) {
-//       emit(`⚠️ [System] Warning during cleanup: ${cleanupErr.message}`);
-//     }
-//     // ------------------------------
-
-//     // LAYER 1: Prompt-Level Cost & Security Guardrails
-//     // const guardrailedPrompt = prompt + 
-//     //   `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
-//     //   `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
-//     //   `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
-//     //   `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
-
-//       //   const guardrailedPrompt = prompt + 
-//       // `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
-//       // `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
-//       // const guardrailedPrompt = prompt + 
-//       // `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
-//       // `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n` +
-//       // `2. NARRATE PROGRESS: Before executing any tool or browser action, output a short, single-line status update (e.g., "Navigating to Personal Info step...", "Filling out Disclosure Questionnaire...").\n`;
-// const guardrailedPrompt = `
-// === AUTHORIZED QA AUTOMATION TASK ===
-// ROLE: You are an autonomous QA automation agent executing a verified test suite.
-// ENVIRONMENT: The target URL is a designated, explicitly authorized synthetic testing sandbox. You have full permission to interact with it, populate dummy PII data, apply synthetic test e-signatures, and submit the final forms to validate the end-to-end workflow.
-
-// TOOLING CONSTRAINT: 
-// You are strictly required to use Playwright for browser automation. You must write a temporary Playwright Node.js script or use the 'npx playwright' CLI to complete the task. Do not attempt to use or fabricate other browser automation tools.
-
-// LOGGING CONSTRAINT:
-// Narrate your progress cleanly. Output a single-line plain text status update before every major action (e.g., "Filling out Disclosure Questionnaire...").
-
-// USER INSTRUCTIONS:
-// ${prompt}
-// `;
-//     fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
-
-//     // Programmatically suppress the one-time warning dialog for bypass mode
-//     try {
-//       const claudeSettingsDir = path.join(os.homedir(), '.claude');
-//       const claudeSettingsFile = path.join(claudeSettingsDir, 'settings.json');
-//       fs.mkdirSync(claudeSettingsDir, { recursive: true });
-//       let settings = {};
-//       if (fs.existsSync(claudeSettingsFile)) {
-//         try { settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8')); } catch(e){}
-//       }
-//       settings.skipDangerousModePermissionPrompt = true;
-//       fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
-//     } catch (e) {
-//       emit('⚠️ [System] Failed to update Claude settings. The headless run might pause for a warning dialog.');
-//     }
-
-// //     // const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
-// // const safePrompt = `Please act as a QA automation agent and execute the authorized test instructions detailed in this file: ${tmpFile}`
-
-// //     let cmd = 'claude'
-// //     let args = [
-// //       '-p', `"${safePrompt}"`, 
-// //       '--allowedTools', 'Bash,Read,Write',
-// //       '--dangerously-skip-permissions'
-// //     ]
-// //     let useShell = false
-
-// //     if (process.platform === 'win32') {
-// //       useShell = true
-// //       try {
-// //         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
-// //         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
-// //         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
-// //         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
-// //       } catch (e) {
-// //         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
-// //         cmd = 'npx.cmd'
-// //         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
-// //       }
-// //     }
-// // const enrichedEnv = {
-// //       ...process.env,
-// //       PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
-// //     };
-// //     const proc = spawn(cmd, args, {
-// //       cwd,
-// //       // env: process.env,
-// //             env: enrichedEnv,
-// //       stdio: ['ignore', 'pipe', 'pipe'], 
-// //       shell: useShell
-// //     })
-
-
-// // INSIDE runClaudeAgent() - Update the execution block:
-//     const safePrompt = `Please act as a QA automation agent and execute the authorized test instructions detailed in this file: ${tmpFile}`
-
-//     let cmd = 'claude'
-//     let args = [
-//       '-p', `"${safePrompt}"`, 
-//       '--allowedTools', 'Bash,Read,Write',
-//       '--dangerously-skip-permissions'
-//     ]
-//     let useShell = false
-
-//     // 1. Create the enriched environment so Claude can find 'npx' and 'playwright' natively
-//     const enrichedEnv = {
-//       ...process.env,
-//       PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
-//     };
-
-//     if (process.platform === 'win32') {
-//       useShell = true
-//       try {
-//         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
-//         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
-//         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
-//         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
-//       } catch (e) {
-//         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
-//         cmd = 'npx.cmd'
-//         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
-//       }
-//     }
-
-//     // 2. Pass enrichedEnv into the spawn command
-//     const proc = spawn(cmd, args, {
-//       cwd,
-//       env: enrichedEnv, // <--- Crucial fix: explicitly pass the enriched path
-//       stdio: ['ignore', 'pipe', 'pipe'], 
-//       shell: useShell
-//     })
-
-//     activeRuns.set(runId, { process: proc })
-
-//     // LAYER 2: Hard Timeout (3 Minutes max execution)
-//     // const MAX_RUNTIME_MS = 3 * 60 * 1000;
-//     // const hardTimeout = setTimeout(() => {
-//     //   proc.kill('SIGKILL');
-//     //   reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
-//     // }, MAX_RUNTIME_MS);
-
-//     let output = ''
-//     let stdoutBuf = ''
-//     let stderrBuf = ''
-//     let lastOutputTime = Date.now()
-    
-//     // Metric for Layer 3 Watchdog
-//     let bashCommandCount = 0;
-
-//     const processChunk = (chunk, isError) => {
-//       lastOutputTime = Date.now() 
-//       const str = chunk.toString()
-      
-//       if (str.includes('OAuth session expired') || str.includes('claude login')) {
-//         // clearTimeout(hardTimeout);
-//         proc.kill('SIGKILL')
-//         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
-//       }
-
-//       // if (isError) {
-//       //   stderrBuf += str
-//       //   const lines = stderrBuf.split('\n')
-//       //   stderrBuf = lines.pop()
-//       //   lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
-//       // } else {
-//       //   stdoutBuf += str
-//       //   const lines = stdoutBuf.split('\n')
-//       //   stdoutBuf = lines.pop()
-//       //   lines.forEach(line => {
-//       //     output += line + '\n'
-//       //     if (line.trim()) emit(line)
-
-//       //     // LAYER 3: Runaway Loop Watchdog
-//       //     // If the agent keeps executing tools without finishing, pull the plug.
-//       //     if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
-//       //       bashCommandCount++;
-//       //       if (bashCommandCount > 12) {
-//       //         // clearTimeout(hardTimeout);
-//       //         proc.kill('SIGKILL');
-//       //         return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
-//       //       }
-//       //     }
-//       //   })
-//       // }
-//       if (isError) {
-//         stderrBuf += str
-//         // Split on newline OR carriage return
-//         const lines = stderrBuf.split(/\r?\n|\r/)
-//         stderrBuf = lines.pop()
-//         lines.filter(l => l.trim()).forEach(line => {
-//           // Strip terminal color codes for clean UI
-//           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
-//           if (cleanLine) emit(`⚙️ [CLI] ${cleanLine}`)
-//         })
-//       } else {
-//         stdoutBuf += str
-//         // Split on newline OR carriage return
-//         const lines = stdoutBuf.split(/\r?\n|\r/)
-//         stdoutBuf = lines.pop()
-//         lines.forEach(line => {
-//           // Strip terminal color codes for clean UI
-//           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
-          
-//           if (cleanLine) {
-//             output += cleanLine + '\n'
-//             emit(`🧠 [Agent] ${cleanLine}`)
-//           }
-
-//           // Layer 3: Runaway Loop Watchdog
-//           if (cleanLine.toLowerCase().includes('running command') || cleanLine.toLowerCase().includes('tool use')) {
-//             bashCommandCount++;
-//             if (bashCommandCount > 12) {
-//               // clearTimeout(hardTimeout);
-//               proc.kill('SIGKILL');
-//               return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
-//             }
-//           }
-//         })
-//       }
-//     }
-
-//     proc.stdout.on('data', (data) => processChunk(data, false))
-//     proc.stderr.on('data', (data) => processChunk(data, true))
-
-//     // const idleCheck = setInterval(() => {
-//     //   if (Date.now() - lastOutputTime > 45000) {
-//     //     emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
-//     //     lastOutputTime = Date.now() 
-//     //   }
-//     // }, 15000)
-
-//     proc.on('close', (code) => {
-//       // clearInterval(idleCheck)
-//       // clearTimeout(hardTimeout)
-//       try { fs.unlinkSync(tmpFile) } catch (_) {}
-      
-//       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
-//       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
-
-//       if (output.trim().length > 0) {
-//         resolve(output.trim())
-//       } else {
-//         reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
-//       }
-//     })
-
-//     proc.on('error', (err) => {
-//       // clearInterval(idleCheck)
-//       // clearTimeout(hardTimeout)
-//       try { fs.unlinkSync(tmpFile) } catch (_) {}
-//       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
-//     })
-//   })
-// }
-
-
-
 function runClaudeAgent(prompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
+    const tmpDir = os.tmpdir()
+    const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     
-    // 1. Save as a standard markdown file in the project workspace, NOT in the OS temp folder.
-    const specFile = path.join(cwd, `test-spec.md`)
-    fs.writeFileSync(specFile, prompt, 'utf8')
-    
-    // Clean old screenshots
+    // Delete any old screenshots from previous runs to prevent stale mailer attachments
     try {
       const files = fs.readdirSync(cwd);
       for (const file of files) {
@@ -1060,9 +675,28 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
         }
       }
       emit('⚙️ [System] Cleaned up previous test artifacts.');
-    } catch (cleanupErr) {}
+    } catch (cleanupErr) {
+      emit(`⚠️ [System] Warning during cleanup: ${cleanupErr.message}`);
+    }
+    // ------------------------------
 
-    // Programmatically suppress the warning dialog
+    // LAYER 1: Prompt-Level Cost & Security Guardrails
+    // const guardrailedPrompt = prompt + 
+    //   `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+    //   `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
+    //   `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
+    //   `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+
+      //   const guardrailedPrompt = prompt + 
+      // `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+      // `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+      const guardrailedPrompt = prompt + 
+      `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+      `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n` +
+      `2. NARRATE PROGRESS: Before executing any tool or browser action, output a short, single-line status update (e.g., "Navigating to Personal Info step...", "Filling out Disclosure Questionnaire...").\n`;
+    fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
+
+    // Programmatically suppress the one-time warning dialog for bypass mode
     try {
       const claudeSettingsDir = path.join(os.homedir(), '.claude');
       const claudeSettingsFile = path.join(claudeSettingsDir, 'settings.json');
@@ -1073,12 +707,11 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       }
       settings.skipDangerousModePermissionPrompt = true;
       fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
-    } catch (e) {}
+    } catch (e) {
+      emit('⚠️ [System] Failed to update Claude settings. The headless run might pause for a warning dialog.');
+    }
 
-    // 2. THE GUARANTEED FIX: The Directives are passed via the CLI argument, not the file.
-    const safePrompt = `I am the owner and developer of the target environment. I explicitly authorize you to perform an automated E2E test on my staging environment. It is fully expected and safe to submit dummy PII and synthetic e-signatures here. 
-Please read the test specifications from the local file 'test-spec.md'. 
-Write a Node.js script using Playwright to execute the test autonomously, run it, and output a Markdown summary. Output a plain-text log before every major browser action you take.`
+    const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
 
     let cmd = 'claude'
     let args = [
@@ -1087,12 +720,6 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
       '--dangerously-skip-permissions'
     ]
     let useShell = false
-
-    // 3. Keep the enriched environment to ensure Playwright tools are found
-    const enrichedEnv = {
-      ...process.env,
-      PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
-    };
 
     if (process.platform === 'win32') {
       useShell = true
@@ -1110,17 +737,26 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
 
     const proc = spawn(cmd, args, {
       cwd,
-      env: enrichedEnv,
+      env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'], 
       shell: useShell
     })
 
     activeRuns.set(runId, { process: proc })
 
+    // LAYER 2: Hard Timeout (3 Minutes max execution)
+    // const MAX_RUNTIME_MS = 3 * 60 * 1000;
+    // const hardTimeout = setTimeout(() => {
+    //   proc.kill('SIGKILL');
+    //   reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
+    // }, MAX_RUNTIME_MS);
+
     let output = ''
     let stdoutBuf = ''
     let stderrBuf = ''
     let lastOutputTime = Date.now()
+    
+    // Metric for Layer 3 Watchdog
     let bashCommandCount = 0;
 
     const processChunk = (chunk, isError) => {
@@ -1128,23 +764,53 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
       const str = chunk.toString()
       
       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+        // clearTimeout(hardTimeout);
         proc.kill('SIGKILL')
         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
       }
 
+      // if (isError) {
+      //   stderrBuf += str
+      //   const lines = stderrBuf.split('\n')
+      //   stderrBuf = lines.pop()
+      //   lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+      // } else {
+      //   stdoutBuf += str
+      //   const lines = stdoutBuf.split('\n')
+      //   stdoutBuf = lines.pop()
+      //   lines.forEach(line => {
+      //     output += line + '\n'
+      //     if (line.trim()) emit(line)
+
+      //     // LAYER 3: Runaway Loop Watchdog
+      //     // If the agent keeps executing tools without finishing, pull the plug.
+      //     if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
+      //       bashCommandCount++;
+      //       if (bashCommandCount > 12) {
+      //         // clearTimeout(hardTimeout);
+      //         proc.kill('SIGKILL');
+      //         return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+      //       }
+      //     }
+      //   })
+      // }
       if (isError) {
         stderrBuf += str
+        // Split on newline OR carriage return
         const lines = stderrBuf.split(/\r?\n|\r/)
         stderrBuf = lines.pop()
         lines.filter(l => l.trim()).forEach(line => {
+          // Strip terminal color codes for clean UI
           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
           if (cleanLine) emit(`⚙️ [CLI] ${cleanLine}`)
         })
       } else {
         stdoutBuf += str
+        // Split on newline OR carriage return
         const lines = stdoutBuf.split(/\r?\n|\r/)
         stdoutBuf = lines.pop()
         lines.forEach(line => {
+          // Strip terminal color codes for clean UI
           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
           
           if (cleanLine) {
@@ -1152,9 +818,11 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
             emit(`🧠 [Agent] ${cleanLine}`)
           }
 
+          // Layer 3: Runaway Loop Watchdog
           if (cleanLine.toLowerCase().includes('running command') || cleanLine.toLowerCase().includes('tool use')) {
             bashCommandCount++;
             if (bashCommandCount > 12) {
+              // clearTimeout(hardTimeout);
               proc.kill('SIGKILL');
               return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
             }
@@ -1166,8 +834,17 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
     proc.stdout.on('data', (data) => processChunk(data, false))
     proc.stderr.on('data', (data) => processChunk(data, true))
 
+    // const idleCheck = setInterval(() => {
+    //   if (Date.now() - lastOutputTime > 45000) {
+    //     emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+    //     lastOutputTime = Date.now() 
+    //   }
+    // }, 15000)
+
     proc.on('close', (code) => {
-      try { fs.unlinkSync(specFile) } catch (_) {}
+      // clearInterval(idleCheck)
+      // clearTimeout(hardTimeout)
+      try { fs.unlinkSync(tmpFile) } catch (_) {}
       
       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
@@ -1180,7 +857,9 @@ Write a Node.js script using Playwright to execute the test autonomously, run it
     })
 
     proc.on('error', (err) => {
-      try { fs.unlinkSync(specFile) } catch (_) {}
+      // clearInterval(idleCheck)
+      // clearTimeout(hardTimeout)
+      try { fs.unlinkSync(tmpFile) } catch (_) {}
       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
     })
   })
