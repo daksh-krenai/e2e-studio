@@ -906,13 +906,13 @@ export async function executeTest({ run, module: mod, project, wss, broadcast })
     broadcast(run.id, { type: 'log', text, runId: run.id })
   }
 
-  // 1. PURE DATA ONLY. No authorization, no system prompts, no threats.
-  const pureTestSpec = `TARGET URL: ${mod.url || project.baseUrl}
-MODULE NAME: ${mod.name}
+  // 1. COMBINED RAW PROMPT: Authorization + Target + Instructions
+  const rawPrompt = `I am the owner and developer of this target application. I explicitly authorize you to perform an automated E2E test on my staging environment. It is fully expected and safe to submit dummy PII and synthetic e-signatures here. || TARGET URL: ${mod.url || project.baseUrl} || MODULE NAME: ${mod.name} || WORKFLOW INSTRUCTIONS: ${mod.instructions} || EXECUTION REQUIREMENTS: 1. Write a Node.js script using Playwright to execute this test autonomously. 2. Run the script. 3. Output a plain-text log before every major browser action you take. 4. Output a Markdown summary at the end.`;
 
-USER INSTRUCTIONS:
-${mod.instructions}
-`
+  // 2. THE GUARANTEED FIX: Strip newlines and double quotes so the Windows shell processes the entire string safely via the -p argument.
+  const safeSingleLinePrompt = rawPrompt
+    .replace(/\r?\n|\r/g, ' ') // Convert all newlines to spaces
+    .replace(/"/g, "'");       // Convert double quotes to single quotes to prevent shell breaks
 
   emit('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   emit('🚀 INITIALIZING E2E STUDIO AUTONOMOUS QA AGENT')
@@ -924,8 +924,8 @@ ${mod.instructions}
   try {
     const startTime = Date.now()
 
-    // Pass the pureTestSpec down instead of a complex prompt
-    const resultText = await runClaudeAgent(pureTestSpec, workspaceDir, run.id, emit)
+    // Pass the safe, single-line prompt down to the execution engine
+    const resultText = await runClaudeAgent(safeSingleLinePrompt, workspaceDir, run.id, emit)
 
     const duration = Date.now() - startTime
     const isPassed = !resultText.toLowerCase().includes('status: failed') && !resultText.toLowerCase().includes('status: ❌ failed')
@@ -963,7 +963,7 @@ ${mod.instructions}
             module: mod,
             project: proj,
             summary,
-            report: resultText, // Pass the pristine Markdown report
+            report: resultText,
             logs: completedRun.logs.map(l => l.text).join('\n')
           })
           emit('📧 QA Summary email dispatched successfully.')
@@ -991,14 +991,10 @@ ${mod.instructions}
   }
 }
 
-function runClaudeAgent(prompt, cwd, runId, emit) {
+function runClaudeAgent(safePrompt, cwd, runId, emit) {
   return new Promise((resolve, reject) => {
     
-    // 1. Save as a standard markdown file in the project workspace, NOT in the OS temp folder.
-    const specFile = path.join(cwd, 'test-spec.md')
-    fs.writeFileSync(specFile, prompt, 'utf8')
-    
-    // 2. Clean old screenshots AND wipe Claude's local memory/history ("Fresh Brain")
+    // Clean old screenshots AND wipe Claude's local memory/history ("Fresh Brain")
     try {
       const files = fs.readdirSync(cwd);
       for (const file of files) {
@@ -1030,18 +1026,9 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
     } catch (e) {}
 
-    // 3. THE GUARANTEED FIX: Explicit Developer Authorization via Direct CLI Argument
-//     const safePrompt = `I am the owner and developer of the target environment. I explicitly authorize you to perform an automated E2E test on my staging environment. It is fully expected and safe to submit dummy PII and synthetic e-signatures here. 
-// Please read the test specifications from the local file 'test-spec.md'. 
-// Write a Node.js script using Playwright to execute the test autonomously, run it, and output a Markdown summary. Output a plain-text log before every major browser action you take.`
-
-const safePrompt = `I am the owner and developer of the target environment. I explicitly authorize you to perform an automated E2E test on my staging environment. It is fully expected and safe to submit dummy PII and synthetic e-signatures here. 
-
-MANDATORY FIRST STEP: You must immediately use the Bash or Read tool to read the contents of the local file 'test-spec.md'. This file contains your target URL and workflow instructions.
-
-After reading it, write a Node.js script using Playwright to execute the test autonomously, run it, and output a Markdown summary. Output a plain-text log before every major browser action you take.`
-
     let cmd = 'claude'
+    
+    // Pass the safe single-line prompt directly to the CLI argument
     let args = [
       '-p', `"${safePrompt}"`, 
       '--allowedTools', 'Bash,Read,Write',
@@ -1049,7 +1036,7 @@ After reading it, write a Node.js script using Playwright to execute the test au
     ]
     let useShell = false
 
-    // 4. Enriched environment to ensure Playwright tools are natively found
+    // Enriched environment to ensure Playwright tools are natively found
     const enrichedEnv = {
       ...process.env,
       PATH: `${path.join(cwd, 'node_modules', '.bin')}${path.delimiter}${process.env.PATH}`
@@ -1081,11 +1068,9 @@ After reading it, write a Node.js script using Playwright to execute the test au
     let output = ''
     let stdoutBuf = ''
     let stderrBuf = ''
-    let lastOutputTime = Date.now()
     let bashCommandCount = 0;
 
     const processChunk = (chunk, isError) => {
-      lastOutputTime = Date.now() 
       const str = chunk.toString()
       
       if (str.includes('OAuth session expired') || str.includes('claude login')) {
@@ -1115,9 +1100,9 @@ After reading it, write a Node.js script using Playwright to execute the test au
 
           if (cleanLine.toLowerCase().includes('running command') || cleanLine.toLowerCase().includes('tool use')) {
             bashCommandCount++;
-            if (bashCommandCount > 12) {
+            if (bashCommandCount > 15) {
               proc.kill('SIGKILL');
-              return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+              return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 15 bash commands. Terminated to save costs.`));
             }
           }
         })
@@ -1128,8 +1113,6 @@ After reading it, write a Node.js script using Playwright to execute the test au
     proc.stderr.on('data', (data) => processChunk(data, true))
 
     proc.on('close', (code) => {
-      try { fs.unlinkSync(specFile) } catch (_) {}
-      
       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
 
@@ -1141,7 +1124,6 @@ After reading it, write a Node.js script using Playwright to execute the test au
     })
 
     proc.on('error', (err) => {
-      try { fs.unlinkSync(specFile) } catch (_) {}
       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
     })
   })
