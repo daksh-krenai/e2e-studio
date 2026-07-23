@@ -666,6 +666,20 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
     const tmpDir = os.tmpdir()
     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
     
+    // Delete any old screenshots from previous runs to prevent stale mailer attachments
+    try {
+      const files = fs.readdirSync(cwd);
+      for (const file of files) {
+        if (file.endsWith('.png') || file.endsWith('.jpeg') || file.endsWith('.jpg')) {
+          fs.unlinkSync(path.join(cwd, file));
+        }
+      }
+      emit('⚙️ [System] Cleaned up previous test artifacts.');
+    } catch (cleanupErr) {
+      emit(`⚠️ [System] Warning during cleanup: ${cleanupErr.message}`);
+    }
+    // ------------------------------
+
     // LAYER 1: Prompt-Level Cost & Security Guardrails
     // const guardrailedPrompt = prompt + 
     //   `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
