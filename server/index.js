@@ -168,6 +168,27 @@ async function main() {
     res.json(run)
   })
 
+  // List every screenshot the agent captured for a run's module (the mailer
+  // attaches all of them; the UI gallery renders whatever this returns).
+  app.get('/api/runs/:runId/screenshots', (req, res) => {
+    const run = getRun(req.params.runId)
+    if (!run) return res.status(404).json({ error: 'not found' })
+    const dir = path.join(__dirname, '../workspaces', run.projectId, run.moduleId)
+    let files = []
+    try {
+      files = fs.readdirSync(dir)
+        .filter(f => /\.(png|jpe?g)$/i.test(f))
+        // Show the final full-page capture first, then the rest alphabetically.
+        .sort((a, b) => (a === 'screenshot.png' ? -1 : b === 'screenshot.png' ? 1 : a.localeCompare(b)))
+    } catch (_) { /* no workspace dir yet */ }
+    res.json({
+      screenshots: files.map(f => ({
+        name: f,
+        url: `/workspaces/${run.projectId}/${run.moduleId}/${f}`
+      }))
+    })
+  })
+
   // ─── Email test ───────────────────────────────────────
   app.post('/api/test-email', async (req, res) => {
     try {

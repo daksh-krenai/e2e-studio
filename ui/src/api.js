@@ -31,6 +31,7 @@ export const api = {
   runModule: (moduleId) => req('POST', `/modules/${moduleId}/run`),
   abortRun: (runId) => req('POST', `/runs/${runId}/abort`),
   getRun: (runId) => req('GET', `/runs/${runId}`),
+  getRunScreenshots: (runId) => req('GET', `/runs/${runId}/screenshots`),
   getModuleRuns: (moduleId) => req('GET', `/modules/${moduleId}/runs`),
   getProjectRuns: (projectId) => req('GET', `/projects/${projectId}/runs`),
 

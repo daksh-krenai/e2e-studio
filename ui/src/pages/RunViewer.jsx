@@ -10,13 +10,16 @@ export default function RunViewer() {
   const [logs, setLogs] = useState([])
   const [status, setStatus] = useState('running')
   const [summary, setSummary] = useState(null)
+  const [screenshots, setScreenshots] = useState([])
   const logRef = useRef(null)
   const wsRef = useRef(null)
 
   useEffect(() => {
+    // Load run metadata only. Logs are streamed exclusively over the WebSocket
+    // (the server replays all stored logs on connect, then streams live ones),
+    // so pulling them here too would render every existing line twice.
     api.getRun(runId).then(r => {
       setRun(r)
-      setLogs(r.logs.map(l => l.text))
       setStatus(r.status)
       setSummary(r.summary)
     })
@@ -27,11 +30,20 @@ export default function RunViewer() {
       } else if (msg.type === 'complete') {
         setStatus(msg.status)
         setSummary(msg.summary)
+        // Screenshots are written during the run; load them once it finishes.
+        loadScreenshots()
       }
     })
 
     return () => wsRef.current?.close()
   }, [runId])
+
+  function loadScreenshots() {
+    api.getRunScreenshots(runId).then(r => setScreenshots(r.screenshots || [])).catch(() => {})
+  }
+
+  // Also load on mount for already-finished runs opened from history.
+  useEffect(() => { loadScreenshots() }, [runId])
 
   useEffect(() => {
     if (logRef.current) {
@@ -88,19 +100,31 @@ export default function RunViewer() {
       {status !== 'running' && run && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 14, marginBottom: 16 }}>
-            <Image size={16} /> Final State & Captured Screenshots
+            <Image size={16} /> Captured Screenshots
+            {screenshots.length > 0 && (
+              <span style={{ color: 'var(--text3)', fontWeight: 400 }}>({screenshots.length})</span>
+            )}
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <img 
-              src={`/workspaces/${projectId}/${run.moduleId}/screenshot.png?t=${Date.now()}`} 
-              alt="Final State Screenshot" 
-              style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border2)' }}
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.insertAdjacentHTML('afterend', '<p style="color: var(--text3); font-size: 13px;">No screenshot file found for this run.</p>');
-              }}
-            />
-          </div>
+          {screenshots.length === 0 ? (
+            <p style={{ color: 'var(--text3)', fontSize: 13 }}>No screenshot files found for this run.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {screenshots.map(shot => (
+                <div key={shot.name}>
+                  <div style={{ fontSize: 12, color: 'var(--text3)', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>
+                    📸 {shot.name}
+                  </div>
+                  <a href={shot.url} target="_blank" rel="noreferrer">
+                    <img
+                      src={`${shot.url}?t=${run.completedAt || ''}`}
+                      alt={shot.name}
+                      style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--border2)', display: 'block' }}
+                    />
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
