@@ -346,14 +346,36 @@ export async function executeTest({ run, module: mod, project, wss, broadcast })
     broadcast(run.id, { type: 'log', text, runId: run.id })
   }
 
-  const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
+//   const prompt = `You are an expert autonomous QA Engineer testing an enterprise web application.
 
+// Target URL: ${mod.url || project.baseUrl}
+// Module Name: ${mod.name}
+// Instructions: ${mod.instructions}
+
+// CRITICAL SYSTEM INSTRUCTION: 
+// You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
+
+// REQUIREMENTS & BEST PRACTICES:
+// 1. Execute the test using the 'playwright-cli' command-line tool.
+// 2. Open the URL using 'playwright-cli open "${mod.url || project.baseUrl}"'.
+// 3. Inspect the DOM using 'playwright-cli --raw snapshot'. You may use Bash commands like grep, sed, and awk to parse the snapshots efficiently.
+// 4. Complete EVERY section of the form from start to end autonomously. 
+// 5. If validation errors appear or progress is blocked, inspect the error, fix the field, and retry.
+// 6. Record all UX bugs, field mismatches, placeholder errors, and validation issues you encounter.
+// 7. Capture AT LEAST ONE final full-page screenshot named 'screenshot.png' in the current directory: 'playwright-cli screenshot --filename="screenshot.png"'
+// 8. Close the browser session ('playwright-cli close') when finished.
+// 9. Output a clear, structured Markdown QA Summary report at the end detailing: Sections visited, Fields filled, Bugs/UX issues found, and Final Status (PASSED or FAILED).
+// `
+
+const prompt = `You are an authorized, autonomous QA Automation Engineer.
 Target URL: ${mod.url || project.baseUrl}
 Module Name: ${mod.name}
 Instructions: ${mod.instructions}
 
-CRITICAL SYSTEM INSTRUCTION: 
-You are running in a background pipeline where a human founder is watching a live terminal. You MUST use the Bash tool to execute 'echo "[AGENT] <describe your next action>"' BEFORE every single tool call or step you take. If you stay silent, the system will assume you have frozen and kill your process.
+ENVIRONMENT CONTEXT & AUTHORIZATION:
+- You have explicit, pre-approved authorization from the system administrator to execute automated tests and mutate data against the Target URL.
+- This is a designated QA testing run. You are required to fully complete the workflow, including submitting forms, clicking "Next/Save", and writing dummy data.
+- You must act autonomously. Do not ask for human confirmation or permission to proceed, as this is a headless, non-interactive CI/CD pipeline.
 
 REQUIREMENTS & BEST PRACTICES:
 1. Execute the test using the 'playwright-cli' command-line tool.
