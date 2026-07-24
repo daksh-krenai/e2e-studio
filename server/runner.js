@@ -827,10 +827,10 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       if (result !== null) finalResult = result
 
       toolCallCount += toolCalls
-      if (toolCallCount > MAX_TOOL_CALLS) {
-        proc.kill('SIGKILL')
-        return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded ${MAX_TOOL_CALLS} tool calls. Terminated to save costs.`))
-      }
+      // if (toolCallCount > MAX_TOOL_CALLS) {
+      //   proc.kill('SIGKILL')
+      //   return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded ${MAX_TOOL_CALLS} tool calls. Terminated to save costs.`))
+      // }
     }
 
     const processChunk = (chunk, isError) => {
