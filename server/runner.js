@@ -661,6 +661,211 @@ REQUIREMENTS & BEST PRACTICES:
 
 
 
+// function runClaudeAgent(prompt, cwd, runId, emit) {
+//   return new Promise((resolve, reject) => {
+//     const tmpDir = os.tmpdir()
+//     const tmpFile = path.join(tmpDir, `e2e-prompt-${runId}.txt`)
+    
+//     // Delete any old screenshots from previous runs to prevent stale mailer attachments
+//     try {
+//       const files = fs.readdirSync(cwd);
+//       for (const file of files) {
+//         if (file.endsWith('.png') || file.endsWith('.jpeg') || file.endsWith('.jpg')) {
+//           fs.unlinkSync(path.join(cwd, file));
+//         }
+//       }
+//       emit('⚙️ [System] Cleaned up previous test artifacts.');
+//     } catch (cleanupErr) {
+//       emit(`⚠️ [System] Warning during cleanup: ${cleanupErr.message}`);
+//     }
+//     // ------------------------------
+
+//     // LAYER 1: Prompt-Level Cost & Security Guardrails
+//     // const guardrailedPrompt = prompt + 
+//     //   `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+//     //   `1. FAIL FAST: If a Playwright command fails, you may retry ONCE. If it fails again, immediately output the QA Summary with FAILED status and exit.\n` +
+//     //   `2. MAX STEPS: You must complete this test in under 12 tool calls to conserve API credits.\n` +
+//     //   `3. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+
+//       //   const guardrailedPrompt = prompt + 
+//       // `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+//       // `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n`;
+//       const guardrailedPrompt = prompt + 
+//       `\n\n=== CRITICAL SAFETY & COST GUARDRAILS ===\n` +
+//       `1. SAFE SHELL: You are strictly limited to 'playwright-cli', 'echo', and basic text parsing. DO NOT use rm, del, npm install, or modify system files.\n` +
+//       `2. NARRATE PROGRESS: Before executing any tool or browser action, output a short, single-line status update (e.g., "Navigating to Personal Info step...", "Filling out Disclosure Questionnaire...").\n`;
+//     fs.writeFileSync(tmpFile, guardrailedPrompt, 'utf8')
+
+//     // Programmatically suppress the one-time warning dialog for bypass mode
+//     try {
+//       const claudeSettingsDir = path.join(os.homedir(), '.claude');
+//       const claudeSettingsFile = path.join(claudeSettingsDir, 'settings.json');
+//       fs.mkdirSync(claudeSettingsDir, { recursive: true });
+//       let settings = {};
+//       if (fs.existsSync(claudeSettingsFile)) {
+//         try { settings = JSON.parse(fs.readFileSync(claudeSettingsFile, 'utf8')); } catch(e){}
+//       }
+//       settings.skipDangerousModePermissionPrompt = true;
+//       fs.writeFileSync(claudeSettingsFile, JSON.stringify(settings, null, 2));
+//     } catch (e) {
+//       emit('⚠️ [System] Failed to update Claude settings. The headless run might pause for a warning dialog.');
+//     }
+
+//     const safePrompt = `Please strictly follow the instructions inside this file: ${tmpFile}`
+
+//     let cmd = 'claude'
+//     let args = [
+//       '-p', `"${safePrompt}"`, 
+//       '--allowedTools', 'Bash,Read,Write',
+//       '--dangerously-skip-permissions'
+//     ]
+//     let useShell = false
+
+//     if (process.platform === 'win32') {
+//       useShell = true
+//       try {
+//         const whereOut = execSync('where claude', { env: process.env, encoding: 'utf8' })
+//         const lines = whereOut.split('\n').map(l => l.trim()).filter(Boolean)
+//         cmd = lines.find(l => l.toLowerCase().endsWith('.cmd')) || lines[0]
+//         emit(`⚙️ [System] Resolved Claude binary at: ${cmd}`)
+//       } catch (e) {
+//         emit(`⚠️ [System] Claude not found in PATH. Falling back to npx executor...`)
+//         cmd = 'npx.cmd'
+//         args = ['-y', '@anthropic-ai/claude-code', '-p', `"${safePrompt}"`, '--allowedTools', 'Bash,Read,Write', '--dangerously-skip-permissions']
+//       }
+//     }
+
+//     const proc = spawn(cmd, args, {
+//       cwd,
+//       env: process.env,
+//       stdio: ['ignore', 'pipe', 'pipe'], 
+//       shell: useShell
+//     })
+
+//     activeRuns.set(runId, { process: proc })
+
+//     // LAYER 2: Hard Timeout (3 Minutes max execution)
+//     // const MAX_RUNTIME_MS = 3 * 60 * 1000;
+//     // const hardTimeout = setTimeout(() => {
+//     //   proc.kill('SIGKILL');
+//     //   reject(new Error(`⚠️ Cost Protection Triggered: Execution exceeded the 3-minute limit. The agent was forcefully terminated to prevent API cost drain.`));
+//     // }, MAX_RUNTIME_MS);
+
+//     let output = ''
+//     let stdoutBuf = ''
+//     let stderrBuf = ''
+//     let lastOutputTime = Date.now()
+    
+//     // Metric for Layer 3 Watchdog
+//     let bashCommandCount = 0;
+
+//     const processChunk = (chunk, isError) => {
+//       lastOutputTime = Date.now() 
+//       const str = chunk.toString()
+      
+//       if (str.includes('OAuth session expired') || str.includes('claude login')) {
+//         // clearTimeout(hardTimeout);
+//         proc.kill('SIGKILL')
+//         return reject(new Error("⚠️ Anthropic OAuth session expired. Please open your terminal and run 'claude login' to re-authenticate."))
+//       }
+
+//       // if (isError) {
+//       //   stderrBuf += str
+//       //   const lines = stderrBuf.split('\n')
+//       //   stderrBuf = lines.pop()
+//       //   lines.filter(l => l.trim()).forEach(line => emit(`⚙️ [CLI] ${line}`))
+//       // } else {
+//       //   stdoutBuf += str
+//       //   const lines = stdoutBuf.split('\n')
+//       //   stdoutBuf = lines.pop()
+//       //   lines.forEach(line => {
+//       //     output += line + '\n'
+//       //     if (line.trim()) emit(line)
+
+//       //     // LAYER 3: Runaway Loop Watchdog
+//       //     // If the agent keeps executing tools without finishing, pull the plug.
+//       //     if (line.toLowerCase().includes('running command') || line.toLowerCase().includes('tool use')) {
+//       //       bashCommandCount++;
+//       //       if (bashCommandCount > 12) {
+//       //         // clearTimeout(hardTimeout);
+//       //         proc.kill('SIGKILL');
+//       //         return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+//       //       }
+//       //     }
+//       //   })
+//       // }
+//       if (isError) {
+//         stderrBuf += str
+//         // Split on newline OR carriage return
+//         const lines = stderrBuf.split(/\r?\n|\r/)
+//         stderrBuf = lines.pop()
+//         lines.filter(l => l.trim()).forEach(line => {
+//           // Strip terminal color codes for clean UI
+//           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
+//           if (cleanLine) emit(`⚙️ [CLI] ${cleanLine}`)
+//         })
+//       } else {
+//         stdoutBuf += str
+//         // Split on newline OR carriage return
+//         const lines = stdoutBuf.split(/\r?\n|\r/)
+//         stdoutBuf = lines.pop()
+//         lines.forEach(line => {
+//           // Strip terminal color codes for clean UI
+//           const cleanLine = line.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').trim()
+          
+//           if (cleanLine) {
+//             output += cleanLine + '\n'
+//             emit(`🧠 [Agent] ${cleanLine}`)
+//           }
+
+//           // Layer 3: Runaway Loop Watchdog
+//           if (cleanLine.toLowerCase().includes('running command') || cleanLine.toLowerCase().includes('tool use')) {
+//             bashCommandCount++;
+//             if (bashCommandCount > 12) {
+//               // clearTimeout(hardTimeout);
+//               proc.kill('SIGKILL');
+//               return reject(new Error(`⚠️ Loop Protection Triggered: Agent exceeded 12 bash commands. Terminated to save costs.`));
+//             }
+//           }
+//         })
+//       }
+//     }
+
+//     proc.stdout.on('data', (data) => processChunk(data, false))
+//     proc.stderr.on('data', (data) => processChunk(data, true))
+
+//     // const idleCheck = setInterval(() => {
+//     //   if (Date.now() - lastOutputTime > 45000) {
+//     //     emit('⏳ [System] Claude is analyzing complex DOM data or planning its next move. Please wait...')
+//     //     lastOutputTime = Date.now() 
+//     //   }
+//     // }, 15000)
+
+//     proc.on('close', (code) => {
+//       // clearInterval(idleCheck)
+//       // clearTimeout(hardTimeout)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+      
+//       if (stdoutBuf.trim()) { output += stdoutBuf; emit(stdoutBuf) }
+//       if (stderrBuf.trim()) { emit(`⚙️ [CLI] ${stderrBuf}`) }
+
+//       if (output.trim().length > 0) {
+//         resolve(output.trim())
+//       } else {
+//         reject(new Error(`Claude CLI exited abruptly (Code ${code}). Check terminal authentication or local Playwright installation.`))
+//       }
+//     })
+
+//     proc.on('error', (err) => {
+//       // clearInterval(idleCheck)
+//       // clearTimeout(hardTimeout)
+//       try { fs.unlinkSync(tmpFile) } catch (_) {}
+//       reject(new Error(`Failed to initialize Claude CLI: ${err.message}`))
+//     })
+//   })
+// }
+
+
 import { spawn, execSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
