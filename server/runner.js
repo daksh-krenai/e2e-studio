@@ -735,12 +735,32 @@ function runClaudeAgent(prompt, cwd, runId, emit) {
       }
     }
 
-    const proc = spawn(cmd, args, {
-      cwd,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'], 
-      shell: useShell
-    })
+    // const proc = spawn(cmd, args, {
+    //   cwd,
+    //   env: process.env,
+    //   stdio: ['ignore', 'pipe', 'pipe'], 
+    //   shell: useShell
+    // })
+
+    let proc;
+    
+    if (useShell) {
+      // Pass as a single string to avoid the DEP0190 warning on Windows
+      proc = spawn(`${cmd} ${args.join(' ')}`, {
+        cwd,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'], 
+        shell: true
+      });
+    } else {
+      // Standard array passing for non-Windows environments
+      proc = spawn(cmd, args, {
+        cwd,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'], 
+        shell: false
+      });
+    }
 
     activeRuns.set(runId, { process: proc })
 
